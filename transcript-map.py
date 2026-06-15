@@ -92,32 +92,15 @@ def transcribe(mp3_path):
 # MATCHING
 # ============================================================
 
-def find_best_match(target_words, transcript_words):
-    """
-    Procura o melhor trecho da transcrição
-    para uma frase da letra oficial.
-    """
-
+def find_best_match(target_words, transcript_words, search_from=0):
     target_text = " ".join(target_words)
-
     best_score = -1
     best_start = None
-
     n = len(target_words)
 
-    for i in range(len(transcript_words) - n + 1):
-
-        candidate = transcript_words[i:i+n]
-
-        candidate_text = " ".join(
-            w["word"] for w in candidate
-        )
-
-        score = fuzz.ratio(
-            target_text,
-            candidate_text
-        )
-
+    for i in range(search_from, len(transcript_words) - n + 1):  # ← começa do cursor
+        candidate_text = " ".join(w["word"] for w in transcript_words[i:i+n])
+        score = fuzz.ratio(target_text, candidate_text)
         if score > best_score:
             best_score = score
             best_start = i
@@ -125,11 +108,8 @@ def find_best_match(target_words, transcript_words):
     if best_score < MATCH_THRESHOLD:
         return None
 
-    return {
-        "score": best_score,
-        "start_index": best_start,
-        "start_time": transcript_words[best_start]["start"]
-    }
+    return {"score": best_score, "start_index": best_start, "start_time": transcript_words[best_start]["start"]}
+
 
 
 # ============================================================
@@ -137,36 +117,22 @@ def find_best_match(target_words, transcript_words):
 # ============================================================
 
 def map_lyrics(lyrics_lines, transcript_words):
-
     results = []
+    cursor = 0  # ← ponteiro global
 
     for line in lyrics_lines:
-
         clean_line = normalize(line)
-
         if not clean_line:
             continue
 
         words = clean_line.split()
+        match = find_best_match(words, transcript_words, search_from=cursor)
 
-        match = find_best_match(
-            words,
-            transcript_words
-        )
-
-        if not match:
-            results.append({
-                "text": line,
-                "timestamp": None,
-                "confidence": 0
-            })
-            continue
-
-        results.append({
-            "text": line,
-            "timestamp": round(match["start_time"], 3),
-            "confidence": round(match["score"], 2)
-        })
+        if match:
+            cursor = match["start_index"] + len(words)  # ← avança após o match
+            results.append({"text": line, "timestamp": round(match["start_time"], 3), "confidence": round(match["score"], 2)})
+        else:
+            results.append({"text": line, "timestamp": None, "confidence": 0})
 
     return results
 
